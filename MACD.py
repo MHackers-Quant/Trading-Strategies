@@ -18,19 +18,28 @@ class MACDStrategy:
         """Download historical data."""
         data = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False)
         data.reset_index(inplace=True)
-        data['Date'] = data['Date'].apply(mpl_dates.date2num)
         return data
 
     def calculate_macd(self):
         """Calculate the MACD and signal line."""
+        # Calculate MACD line
         self.data['MACD'] = self.data['Close'].ewm(span=12, adjust=False).mean() - self.data['Close'].ewm(span=26, adjust=False).mean()
+        # Calculate signal line
         self.data['MACD_SIGNAL'] = self.data['MACD'].ewm(span=9, adjust=False).mean()
 
     def generate_signals(self):
         """Generate buy and sell signals."""
-        self.data['Signal_Change'] = np.sign(self.data['MACD'] - self.data['MACD_SIGNAL']).diff()
-        self.data['Buy'] = np.where(self.data['Signal_Change'] > 0, self.data['Close'], np.nan)
-        self.data['Sell'] = np.where(self.data['Signal_Change'] < 0, self.data['Close'], np.nan)
+        # Create Buy and Sell columns
+        self.data['Buy'] = np.nan
+        self.data['Sell'] = np.nan
+        
+        # Identify buy/sell conditions
+        buy_conditions = (self.data['MACD'] > self.data['MACD_SIGNAL']) & (self.data['MACD'].shift(1) <= self.data['MACD_SIGNAL'].shift(1))
+        sell_conditions = (self.data['MACD'] < self.data['MACD_SIGNAL']) & (self.data['MACD'].shift(1) >= self.data['MACD_SIGNAL'].shift(1))
+        
+        # Assign buy/sell signals
+        self.data.loc[buy_conditions, 'Buy'] = self.data['Close']
+        self.data.loc[sell_conditions, 'Sell'] = self.data['Close']
 
     def plot_results(self):
         """Plot the MACD strategy results."""
@@ -63,5 +72,5 @@ class MACDStrategy:
 
 
 # Example Usage
-macd_strategy = MACDStrategy(ticker="BTC-USD", start_date="2022-03-01", end_date=pd.Timestamp.today().strftime('%Y-%m-%d'))
+macd_strategy = MACDStrategy(ticker="AAPL", start_date="2022-03-01", end_date=pd.Timestamp.today().strftime('%Y-%m-%d'))
 macd_strategy.plot_results()
