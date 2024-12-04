@@ -17,7 +17,7 @@ class MACDStrategy:
     def download_data(self):
         """Download historical data."""
         data = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False)
-        data.reset_index(inplace=True)
+        data.reset_index(inplace=True)  # Ensure dates are in a column, not the index
         return data
 
     def calculate_macd(self):
@@ -40,6 +40,20 @@ class MACDStrategy:
         # Assign buy/sell signals
         self.data.loc[buy_conditions, 'Buy'] = self.data['Close']
         self.data.loc[sell_conditions, 'Sell'] = self.data['Close']
+
+    def print_signals(self):
+        """Print out buy and sell signals"""
+        # Filter and print buy signals
+        buy_signals = self.data[self.data['Buy'].notna()]
+        print("\n--- BUY SIGNALS ---")
+        for _, row in buy_signals.iterrows():
+            print(f"Date: {row['Date']}, Price: ${row['Close']:.2f}")
+
+        # Filter and print sell signals
+        sell_signals = self.data[self.data['Sell'].notna()]
+        print("\n--- SELL SIGNALS ---")
+        for _, row in sell_signals.iterrows():
+            print(f"Date: {row['Date']}, Price: ${row['Close']:.2f}")
 
     def plot_results(self):
         """Plot the MACD strategy results."""
@@ -71,6 +85,7 @@ class MACDStrategy:
         plt.show()
 
 
-# Example Usage
+# Example Usage for Apple Stock
 macd_strategy = MACDStrategy(ticker="AAPL", start_date="2022-03-01", end_date=pd.Timestamp.today().strftime('%Y-%m-%d'))
 macd_strategy.plot_results()
+macd_strategy.print_signals()
