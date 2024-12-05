@@ -1,9 +1,7 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mpl_dates
-
 
 class MACDStrategy:
     def __init__(self, ticker, start_date, end_date):
@@ -28,64 +26,93 @@ class MACDStrategy:
         self.data['MACD_SIGNAL'] = self.data['MACD'].ewm(span=9, adjust=False).mean()
 
     def generate_signals(self):
-        """Generate buy and sell signals."""
+        """Generate buy and sell signals with more robust conditions."""
         # Create Buy and Sell columns
-        self.data['Buy'] = np.nan
-        self.data['Sell'] = np.nan
-        
-        # Identify buy/sell conditions
-        buy_conditions = (self.data['MACD'] > self.data['MACD_SIGNAL']) & (self.data['MACD'].shift(1) <= self.data['MACD_SIGNAL'].shift(1))
-        sell_conditions = (self.data['MACD'] < self.data['MACD_SIGNAL']) & (self.data['MACD'].shift(1) >= self.data['MACD_SIGNAL'].shift(1))
-        
-        # Assign buy/sell signals
-        self.data.loc[buy_conditions, 'Buy'] = self.data['Close']
-        self.data.loc[sell_conditions, 'Sell'] = self.data['Close']
+        self.data['Buy_Signal'] = False
+        self.data['Sell_Signal'] = False
+
+        # More sophisticated signal generation
+        for i in range(1, len(self.data)):
+            # Buy signal: MACD crosses above signal line and is negative (potential trend reversal)
+            if (self.data['MACD'].iloc[i] > self.data['MACD_SIGNAL'].iloc[i] and 
+                self.data['MACD'].iloc[i-1] <= self.data['MACD_SIGNAL'].iloc[i-1] and 
+                self.data['MACD'].iloc[i] < 0):
+                self.data.loc[self.data.index[i], 'Buy_Signal'] = True
+
+            # Sell signal: MACD crosses below signal line and is positive (potential trend reversal)
+            if (self.data['MACD'].iloc[i] < self.data['MACD_SIGNAL'].iloc[i] and 
+                self.data['MACD'].iloc[i-1] >= self.data['MACD_SIGNAL'].iloc[i-1] and 
+                self.data['MACD'].iloc[i] > 0):
+                self.data.loc[self.data.index[i], 'Sell_Signal'] = True
 
     def print_signals(self):
-        """Print out buy and sell signals"""
+        """Print out buy and sell signals."""
         # Filter and print buy signals
-        buy_signals = self.data[self.data['Buy'].notna()]
+        buy_signals = self.data[self.data['Buy_Signal']]
         print("\n--- BUY SIGNALS ---")
         for _, row in buy_signals.iterrows():
-            print(f"Date: {row['Date']}, Price: ${row['Close']:.2f}")
-
+            try:
+                date = row['Date'].strftime('%Y-%m-%d') if isinstance(row['Date'], pd.Timestamp) else row['Date']
+                price = float(row['Close'])  # Ensure numeric
+                print(f"Date: {date}, Price: ${price:.2f}")
+            except Exception as e:
+                print(f"Error processing row: {row}, error: {e}")
+        
         # Filter and print sell signals
-        sell_signals = self.data[self.data['Sell'].notna()]
+        sell_signals = self.data[self.data['Sell_Signal']]
         print("\n--- SELL SIGNALS ---")
         for _, row in sell_signals.iterrows():
-            print(f"Date: {row['Date']}, Price: ${row['Close']:.2f}")
+            try:
+                date = row['Date'].strftime('%Y-%m-%d') if isinstance(row['Date'], pd.Timestamp) else row['Date']
+                price = float(row['Close'])  # Ensure numeric
+                print(f"Date: {date}, Price: ${price:.2f}")
+            except Exception as e:
+                print(f"Error processing row: {row}, error: {e}")
 
     def plot_results(self):
-        """Plot the MACD strategy results."""
-        plt.figure(figsize=(14, 8))
+        """Plot the MACD strategy results with improved signal visualization."""
+        # Create two subplots with explicit heights
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), 
+                                        gridspec_kw={'height_ratios': [3, 1]}, 
+                                        sharex=True)
+        
+        # Price subplot
+        ax1.plot(self.data['Date'], self.data['Close'], label='Close Price', color='blue', lw=2)
+        
+        # Buy signals on price chart
+        buy_signals = self.data[self.data['Buy_Signal']]
+        ax1.scatter(buy_signals['Date'], buy_signals['Close'], color='green', marker='^', s=200, 
+                    label='Buy Signal', zorder=5, edgecolors='black', linewidth=1)
+        
+        # Sell signals on price chart
+        sell_signals = self.data[self.data['Sell_Signal']]
+        ax1.scatter(sell_signals['Date'], sell_signals['Close'], color='red', marker='v', s=200, 
+                    label='Sell Signal', zorder=5, edgecolors='black', linewidth=1)
+        
+        ax1.set_title(f'{self.ticker} MACD Strategy', fontsize=16)
+        ax1.set_ylabel('Price ($)', fontsize=12)
+        ax1.legend(loc='best')
+        ax1.grid(alpha=0.7, linestyle='--')
+
+        # MACD subplot
+        ax2.plot(self.data['Date'], self.data['MACD'], label='MACD', color='purple', lw=1.5)
+        ax2.plot(self.data['Date'], self.data['MACD_SIGNAL'], label='Signal Line', color='orange', lw=1.5, linestyle='--')
+        ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+        
+        ax2.set_xlabel('Date', fontsize=12)
+        ax2.set_ylabel('MACD', fontsize=12)
+        ax2.legend(loc='best')
+        ax2.grid(alpha=0.7, linestyle='--')
+
+        # Format x-axis
         date_format = mpl_dates.DateFormatter('%d %b %Y')
-
-        # Plot Close Price
-        plt.plot(self.data['Date'], self.data['Close'], label='Close Price', color='blue', lw=2)
+        ax1.xaxis.set_major_formatter(date_format)
+        plt.setp(ax1.get_xticklabels(), rotation=45, ha='right')
         
-        # Plot MACD and Signal Line
-        plt.plot(self.data['Date'], self.data['MACD'], label='MACD', color='purple', lw=1.5)
-        plt.plot(self.data['Date'], self.data['MACD_SIGNAL'], label='Signal Line', color='orange', lw=1.5, linestyle='--')
-
-        # Buy/Sell Signals
-        plt.scatter(self.data['Date'], self.data['Buy'], color='green', marker='^', s=100, label='Buy Signal')
-        plt.scatter(self.data['Date'], self.data['Sell'], color='red', marker='v', s=100, label='Sell Signal')
-
-        # Configure Plot
-        plt.title(f'{self.ticker} MACD Strategy', fontsize=16)
-        plt.xlabel('Date', fontsize=14)
-        plt.ylabel('Price ($)', fontsize=14)
-        plt.legend(fontsize=12)
-        plt.grid(alpha=0.7, linestyle='--')
-        
-        ax = plt.gca()
-        ax.xaxis.set_major_formatter(date_format)
-        plt.gcf().autofmt_xdate()
         plt.tight_layout()
         plt.show()
 
-
-# Example Usage for Apple Stock
+# Create and run the strategy
 macd_strategy = MACDStrategy(ticker="AAPL", start_date="2022-03-01", end_date=pd.Timestamp.today().strftime('%Y-%m-%d'))
 macd_strategy.plot_results()
 macd_strategy.print_signals()
